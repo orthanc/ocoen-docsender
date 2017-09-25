@@ -1,0 +1,7 @@
+/.cache/
+/.tox/
+/ocoen_docsender.egg-info/
+
+__pycache__
+*.pyc
+
