@@ -27,10 +27,7 @@ def _format_message(message):
         message_part.set_payload(message['html'])
         parts.append(message_part)
     if not parts:
-        raise ValueError(
-            'Message must have at least one of html or text but was ' +
-            str(message)
-        )
+        raise ValueError('Message must have at least one of html or text but was ' + str(message))
     if len(parts) == 1:
         return parts[0]
     else:
