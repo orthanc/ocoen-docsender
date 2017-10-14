@@ -2,32 +2,40 @@ from email.message import Message
 from email.policy import SMTPUTF8
 
 
-def _format_email(from_, to, message, attachment):
-    if message is None:
-        raise ValueError('Message must be a dict but was ' + str(message))
+def send_email(ses, from_, to, subject, msg):
+    email = _create_mime_message(from_, to, subject, {"text": msg}, None)
+    ses.send_raw_email(
+        RawMessage={'Data': email},
+    )
+
+
+def _create_mime_message(from_, to, subject, message_formats, attachment):
+    if message_formats is None:
+        raise ValueError('Message_formats must be a dict but was ' + str(message_formats))
     email = Message(policy=SMTPUTF8)
     email.set_type('multipart/mixed')
     email['From'] = from_
     email['To'] = to
-
-    email.attach(_format_message(message))
+    email['Subject'] = subject
+    email.attach(_create_mime_body(message_formats))
 
     return email.as_bytes()
 
 
-def _format_message(message):
+def _create_mime_body(message_formats):
     parts = []
-    if 'text' in message:
+    if 'text' in message_formats:
         message_part = Message(policy=SMTPUTF8)
-        message_part.set_payload(message['text'])
+        message_part.set_type('text/plain')
+        message_part.set_payload(message_formats['text'])
         parts.append(message_part)
-    if 'html' in message:
+    if 'html' in message_formats:
         message_part = Message(policy=SMTPUTF8)
         message_part.set_type('text/html')
-        message_part.set_payload(message['html'])
+        message_part.set_payload(message_formats['html'])
         parts.append(message_part)
     if not parts:
-        raise ValueError('Message must have at least one of html or text but was ' + str(message))
+        raise ValueError('Message_formats must have at least one of html or text but was ' + str(message_formats))
     if len(parts) == 1:
         return parts[0]
     else:
