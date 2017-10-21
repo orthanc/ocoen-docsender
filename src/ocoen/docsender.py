@@ -1,10 +1,17 @@
+from copy import deepcopy
 from email.message import Message
 from email.policy import SMTPUTF8
+from jinja2 import select_autoescape, DictLoader, StrictUndefined
+# from jinja2 import , DictLoader
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 import yaml
 
 
 class DocSender:
+
+    MESSAGE_PARTS = ['attachment_name', 'subject']
+    BODY_TYPES = ['html', 'text']
 
     def __init__(self, ses_client, profile_bucket, attachment_bucket):
         self._ses = ses_client
@@ -16,12 +23,49 @@ class DocSender:
         profile_body = profile_object.get()['Body']
         return yaml.load(profile_body.read())['email']
 
-    def _format_message_parts(self, profile, event):
-        # format subject, message body and attachment title
-        # jinja2 format template to produce html body
-        # html2text to produce text fallback
-        # return dict matching create_mime_message
-        pass
+    def _build_templates_dict(self, profile):
+        templates = {}
+        template_names = {}
+        for part in DocSender.MESSAGE_PARTS:
+            template_key = part + '_template'
+            if template_key in profile:
+                template_name = part + '.txt'
+                templates[template_name] = profile[template_key]
+                template_names[part] = template_name
+        for type_ in DocSender.BODY_TYPES:
+            template_key = 'body_{}_template'.format(type_)
+            if template_key in profile:
+                template_name = 'body.{}'.format(type_)
+                templates[template_name] = profile[template_key]
+        return templates, template_names
+
+    def _format_message_parts(self, profile, event_in):
+        event = deepcopy(event_in)
+        templates, template_names = self._build_templates_dict(profile)
+        envionment = ImmutableSandboxedEnvironment(
+            autoescape=select_autoescape(['html']),
+            auto_reload=False,
+            loader=DictLoader(templates),
+            undefined=StrictUndefined,
+        )
+
+        message_parts = {}
+        for part in DocSender.MESSAGE_PARTS:
+            if part in template_names:
+                template_name = template_names[part]
+                template = envionment.get_template(template_name)
+                message_parts[part] = template.render(event=event, **message_parts)
+            else:
+                message_parts[part] = None
+        body = {}
+        for type_ in DocSender.BODY_TYPES:
+            template_name = 'body.{}'.format(type_)
+            if template_name in templates:
+                template = envionment.get_template(template_name)
+                body[type_] = template.render(event=event, **message_parts)
+
+        message_parts['body'] = body
+        return message_parts
 
     def _load_attachment(self, attachment_key):
         attachment_object = self._attachment_bucket.Object(attachment_key)

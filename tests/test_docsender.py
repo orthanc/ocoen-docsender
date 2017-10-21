@@ -4,6 +4,7 @@ from unittest.mock import create_autospec
 from yaml.error import YAMLError
 
 import boto3
+import jinja2
 import pytest
 import yaml
 
@@ -82,6 +83,156 @@ def test_load_profile_invalid_yaml(docsender, s3_buckets):
 
     with pytest.raises(YAMLError):
         docsender._load_profile('test_profile.yaml')
+
+
+def test_format_message_parts_attachment_name(docsender):
+    profile = {
+        'attachment_name_template': 'test {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['attachment_name'] == 'test bob'
+
+
+def test_format_message_parts_attachment_name_is_not_escaped(docsender):
+    profile = {
+        'attachment_name_template': '<test> {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': '<bob>'})
+
+    assert message_parts['attachment_name'] == '<test> <bob>'
+
+
+def test_format_message_parts_subject(docsender):
+    profile = {
+        'subject_template': 'test {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['subject'] == 'test bob'
+
+
+def test_format_message_parts_subject_is_not_escaped(docsender):
+    profile = {
+        'subject_template': '<test> {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': '<bob>'})
+
+    assert message_parts['subject'] == '<test> <bob>'
+
+
+def test_format_message_parts_subject_references_attachment(docsender):
+    profile = {
+        'subject_template': 'subject {{ attachment_name }}',
+        'attachment_name_template': 'attachment {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['subject'] == 'subject attachment bob'
+
+
+def test_format_message_parts_body_html(docsender):
+    profile = {
+        'body_html_template': 'test {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['body']['html'] == 'test bob'
+
+
+def test_format_message_parts_body_html_is_escaped(docsender):
+    profile = {
+        'body_html_template': '<test> {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': '<bob>'})
+
+    assert message_parts['body']['html'] == '<test> &lt;bob&gt;'
+
+
+def test_format_message_parts_body_html_references_attachment_and_subject(docsender):
+    profile = {
+        'body_html_template': 'body_html {{ subject }} {{ attachment_name }}',
+        'attachment_name_template': 'attachment {{ event.name }}',
+        'subject_template': 'subject {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['body']['html'] == 'body_html subject bob attachment bob'
+
+
+def test_format_message_parts_body_text(docsender):
+    profile = {
+        'body_text_template': 'test {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['body']['text'] == 'test bob'
+
+
+def test_format_message_parts_body_text_is_not_escaped(docsender):
+    profile = {
+        'body_text_template': '<test> {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': '<bob>'})
+
+    assert message_parts['body']['text'] == '<test> <bob>'
+
+
+def test_format_message_parts_body_text_references_attachment_and_subject(docsender):
+    profile = {
+        'body_text_template': 'body_text {{ subject }} {{ attachment_name }}',
+        'attachment_name_template': 'attachment {{ event.name }}',
+        'subject_template': 'subject {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['body']['text'] == 'body_text subject bob attachment bob'
+
+
+def test_format_message_parts_all(docsender):
+    profile = {
+        'attachment_name_template': 'attach {{ event.name }}',
+        'subject_template': 'subject {{ event.name }}',
+        'body_html_template': 'body_html {{ event.name }}',
+        'body_text_template': 'body_text {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['attachment_name'] == 'attach bob'
+    assert message_parts['subject'] == 'subject bob'
+    assert message_parts['body']['html'] == 'body_html bob'
+    assert message_parts['body']['text'] == 'body_text bob'
+
+
+def test_format_message_parts_none(docsender):
+    profile = {}
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['attachment_name'] is None
+    assert message_parts['subject'] is None
+    assert message_parts['body'] == {}
+
+
+def test_format_message_parts_undefined_variable(docsender):
+    profile = {
+        'attachment_name_template': 'test {{ event.name }}',
+    }
+
+    with pytest.raises(jinja2.exceptions.UndefinedError):
+        docsender._format_message_parts(profile, {})
 
 
 def test_load_attachment(docsender, s3_buckets):
