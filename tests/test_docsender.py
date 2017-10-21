@@ -1,9 +1,11 @@
 from botocore.response import StreamingBody
 from ocoen.docsender import DocSender
 from unittest.mock import create_autospec
+from yaml.error import YAMLError
 
 import boto3
 import pytest
+import yaml
 
 
 @pytest.fixture
@@ -55,9 +57,37 @@ def s3_buckets(session):
 
 
 @pytest.fixture
-def docsender(mocker, session, s3_buckets):
+def docsender(session, s3_buckets):
     ses = create_autospec(session.client('ses').__class__, instance=True)
     profile_bucket = s3_buckets.Bucket('profile')
     attachment_bucket = s3_buckets.Bucket('attachment')
 
     return DocSender(ses, profile_bucket, attachment_bucket)
+
+
+def test_load_profile(docsender, s3_buckets):
+    expected_profile = {
+        'subject_template': 'test_subject',
+        'body_template': 'test_body',
+    }
+    s3_buckets.object_data['profile']['test_profile.yaml'] = yaml.dump({'email': expected_profile})
+
+    profile = docsender._load_profile('test_profile.yaml')
+
+    assert expected_profile == profile
+
+
+def test_load_profile_invalid_yaml(docsender, s3_buckets):
+    s3_buckets.object_data['profile']['test_profile.yaml'] = '"'
+
+    with pytest.raises(YAMLError):
+        docsender._load_profile('test_profile.yaml')
+
+
+def test_load_attachment(docsender, s3_buckets):
+    expected_data = 'test data'
+    s3_buckets.object_data['attachment']['results/attachment.pdf'] = expected_data
+
+    attachment = docsender._load_attachment('results/attachment.pdf')
+
+    assert expected_data == attachment
