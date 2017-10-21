@@ -2,11 +2,38 @@ from email.message import Message
 from email.policy import SMTPUTF8
 
 
-def send_email(ses, from_, to, subject, msg):
-    email = _create_mime_message(from_, to, subject, {"text": msg}, None)
-    ses.send_raw_email(
-        RawMessage={'Data': email},
-    )
+class DocSender:
+
+    def __init__(self, ses_client, profile_bucket, attachment_bucket):
+        self._ses = ses_client
+        self._profile_bucket = profile_bucket
+        self._attachment_bucket = attachment_bucket
+
+    def _load_profile(self, profile_key):
+        # Load profile from s3 bucket
+        # parse json
+        # return dict
+        pass
+
+    def _create_message_body(self, template, event, attachment_name):
+        # jinja2 format template to produce html body
+        # html2text to produce text fallback
+        # return dict matching create_mime_message
+        pass
+
+    def _load_attachment(self, name_template, attachment_key, event):
+        # retrive attachment from s3 bucket
+        # format Jinja2 template name
+        # return tuple of name, attachment
+        pass
+
+    def send_email(self, profile_key, event):
+        profile = self._load_profile(profile_key)
+        email = _create_mime_message(profile['from'], profile['to'], profile['subject'],
+                                     {"text": profile['message']}, None)
+        self._ses.send_raw_email(
+            RawMessage={'Data': email},
+        )
 
 
 def _create_mime_message(from_, to, subject, message_formats, attachment):
