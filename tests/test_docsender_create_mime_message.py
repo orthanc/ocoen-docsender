@@ -55,7 +55,7 @@ def test_create_mime_message_sets_text_body(mocker):
     email = message_from_bytes(result)
     text_part = email.get_payload()[0]
     assert 'text/plain' == text_part.get_content_type()
-    assert 'text message' == text_part.get_payload()
+    assert 'text message' == text_part.get_payload().rstrip()
 
 
 def test_create_mime_message_sets_html_body(mocker):
@@ -66,7 +66,7 @@ def test_create_mime_message_sets_html_body(mocker):
     email = message_from_bytes(result)
     html_part = email.get_payload()[0]
     assert 'text/html' == html_part.get_content_type()
-    assert 'html message' == html_part.get_payload()
+    assert 'html message' == html_part.get_payload().rstrip()
 
 
 def test_create_mime_message_sets_alternatives_body(mocker):
@@ -81,11 +81,11 @@ def test_create_mime_message_sets_alternatives_body(mocker):
 
     text_part = alternative_part.get_payload()[0]
     assert 'text/plain' == text_part.get_content_type()
-    assert 'text message' == text_part.get_payload()
+    assert 'text message' == text_part.get_payload().rstrip()
 
     html_part = alternative_part.get_payload()[1]
     assert 'text/html' == html_part.get_content_type()
-    assert 'html message' == html_part.get_payload()
+    assert 'html message' == html_part.get_payload().rstrip()
 
 
 def _remove_message_bodies(msg):
