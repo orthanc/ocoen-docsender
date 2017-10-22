@@ -72,16 +72,18 @@ class DocSender:
 
     def _load_attachment(self, attachment_key):
         attachment_object = self._attachment_bucket.Object(attachment_key)
-        attachment_body = attachment_object.get()['Body']
-        return attachment_body.read()
+        attachment_response = attachment_object.get()
+        attachment_body = attachment_response['Body']
+        return attachment_body.read(), attachment_response['ContentType'].split('/')
 
     def send_email(self, profile_key, attachment_key, event):
         profile = self._load_profile(profile_key)
-        attachment_data = self._load_attachment(attachment_key)
+        attachment_data, attachment_type = self._load_attachment(attachment_key)
         message_parts = self._format_message_parts(profile, event)
         email = _create_mime_message(profile['from'], profile['to'], message_parts['subject'], message_parts['body'], {
             'name': message_parts['attachment_name'],
             'data': attachment_data,
+            'type': attachment_type,
         })
         self._ses.send_raw_email(
             RawMessage={'Data': email},
@@ -96,6 +98,10 @@ def _create_mime_message(from_, to, subject, message_formats, attachment):
     email['From'] = from_
     email['To'] = to
     email['Subject'] = subject
+
+    if attachment is not None:
+        email.add_attachment(attachment['data'], filename=attachment['name'],
+                             maintype=attachment['type'][0], subtype=attachment['type'][1])
 
     return email.as_bytes()
 

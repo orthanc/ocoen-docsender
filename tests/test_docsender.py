@@ -25,6 +25,7 @@ def s3_buckets(session):
         def __init__(self):
             self.buckets = {}
             self.object_data = {}
+            self.object_meta = {}
             pass
 
         def Bucket(self, bucket_name):
@@ -32,6 +33,7 @@ def s3_buckets(session):
                 return self.buckets[bucket_name]
 
             object_data = {}
+            object_meta = {}
             mock_objects = {}
 
             def mock_object(object_name):
@@ -40,10 +42,17 @@ def s3_buckets(session):
 
                 body = create_autospec(StreamingBody, instance=True)
                 body.read.return_value = object_data[object_name]
+
+                def mock_get():
+                    if object_name in object_meta:
+                        resp = object_meta[object_name].copy()
+                    else:
+                        resp = {}
+                    resp['Body'] = body
+                    return resp
+
                 mock = create_autospec(object_class, instance=True)
-                mock.get.return_value = {
-                    'Body': body
-                }
+                mock.get.side_effect = mock_get
 
                 mock_objects[object_name] = mock
                 return mock
@@ -52,6 +61,7 @@ def s3_buckets(session):
             bucket.Object.side_effect = mock_object
             self.buckets[bucket_name] = bucket
             self.object_data[bucket_name] = object_data
+            self.object_meta[bucket_name] = object_meta
             return bucket
 
     mock_s3 = MockS3()
@@ -260,10 +270,14 @@ def test_format_message_parts_undefined_variable(docsender):
 def test_load_attachment(docsender, s3_buckets):
     expected_data = 'test data'
     s3_buckets.object_data['attachment']['results/attachment.pdf'] = expected_data
+    s3_buckets.object_meta['attachment']['results/attachment.pdf'] = {
+        'ContentType': 'text/plain'
+    }
 
-    attachment = docsender._load_attachment('results/attachment.pdf')
+    attachment, content_type = docsender._load_attachment('results/attachment.pdf')
 
     assert expected_data == attachment
+    assert ['text', 'plain'] == content_type
 
 
 def test_send_email(docsender, mocker):
@@ -285,7 +299,8 @@ def test_send_email(docsender, mocker):
     attachment_data = 'test data'
     mime_message = 'test message'
     mocker.patch('ocoen.docsender.DocSender._load_profile', autospec=True, return_value=profile)
-    mocker.patch('ocoen.docsender.DocSender._load_attachment', autospec=True, return_value=attachment_data)
+    mocker.patch('ocoen.docsender.DocSender._load_attachment', autospec=True,
+                 return_value=(attachment_data, ['text', 'plain']))
     mocker.patch('ocoen.docsender._create_mime_message', autospec=True, return_value=mime_message)
 
     docsender.send_email(profile_key, attachment_key, event)
@@ -302,6 +317,7 @@ def test_send_email(docsender, mocker):
         attachment={
             'name': attachment_name,
             'data': attachment_data,
+            'type': ['text', 'plain'],
         }
     )
     docsender._ses.send_raw_email.assert_called_once_with(RawMessage={'Data': mime_message})

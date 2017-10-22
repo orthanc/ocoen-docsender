@@ -1,3 +1,4 @@
+from base64 import b64decode
 from email import message_from_bytes
 from email.message import EmailMessage
 from ocoen.docsender import _create_mime_message
@@ -86,6 +87,28 @@ def test_create_mime_message_sets_alternatives_body(mocker):
     html_part = alternative_part.get_payload()[1]
     assert 'text/html' == html_part.get_content_type()
     assert 'html message' == html_part.get_payload().rstrip()
+
+
+def test_create_mime_message_with_attachment(mocker):
+    mocker.patch.dict(example_message)
+    _remove_message_bodies(example_message)
+    example_message['text'] = 'text message'
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, {
+        'name': 'test-attachment',
+        'data': 'some data'.encode('utf-8'),
+        'type': ['text', 'html'],
+    })
+    email = message_from_bytes(result, _class=EmailMessage)
+
+    attachment_part = email.get_payload()[1]
+    assert 'attachment' == attachment_part.get_content_disposition()
+    assert 'test-attachment' == attachment_part.get_filename()
+    assert 'text/html' == attachment_part.get_content_type()
+    assert 'some data'.encode('utf-8') == b64decode(attachment_part.get_payload())
+
+    text_part = email.get_payload()[0]
+    assert 'text/plain' == text_part.get_content_type()
+    assert 'text message' == text_part.get_payload().rstrip()
 
 
 def _remove_message_bodies(msg):
