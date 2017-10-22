@@ -5,6 +5,7 @@ from yaml.error import YAMLError
 
 import boto3
 import jinja2
+import ocoen.docsender
 import pytest
 import yaml
 
@@ -263,3 +264,44 @@ def test_load_attachment(docsender, s3_buckets):
     attachment = docsender._load_attachment('results/attachment.pdf')
 
     assert expected_data == attachment
+
+
+def test_send_email(docsender, mocker):
+    event = {'event_data': 'id'}
+    profile_key = 'profile_key'
+    from_ = 'from'
+    to = 'to'
+    attachment_name = 'attachment name'
+    subject = 'subject'
+    message_body = 'message body'
+    profile = {
+        'from': from_,
+        'to': to,
+        'attachment_name_template': attachment_name,
+        'subject_template': subject,
+        'body_text_template': message_body
+    }
+    attachment_key = 'attachment_key'
+    attachment_data = 'test data'
+    mime_message = 'test message'
+    mocker.patch('ocoen.docsender.DocSender._load_profile', autospec=True, return_value=profile)
+    mocker.patch('ocoen.docsender.DocSender._load_attachment', autospec=True, return_value=attachment_data)
+    mocker.patch('ocoen.docsender._create_mime_message', autospec=True, return_value=mime_message)
+
+    docsender.send_email(profile_key, attachment_key, event)
+
+    docsender._load_profile.assert_called_once_with(docsender, profile_key)
+    docsender._load_attachment.assert_called_once_with(docsender, attachment_key)
+    ocoen.docsender._create_mime_message.assert_called_once_with(
+        from_=from_,
+        to=to,
+        subject=subject,
+        message_formats={
+            'text': message_body,
+        },
+        attachment={
+            'name': attachment_name,
+            'data': attachment_data,
+        }
+    )
+    docsender._ses.send_raw_email.assert_called_once_with(RawMessage={'Data': mime_message})

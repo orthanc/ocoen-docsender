@@ -75,14 +75,17 @@ class DocSender:
         attachment_body = attachment_object.get()['Body']
         return attachment_body.read()
 
-    def send_email(self, profile_key, event):
-        # profile = self._load_profile(profile_key)
-        # email = _create_mime_message(profile['from'], profile['to'], profile['subject'],
-        #                              {"text": profile['message']}, None)
-        # self._ses.send_raw_email(
-        #     RawMessage={'Data': email},
-        # )
-        pass
+    def send_email(self, profile_key, attachment_key, event):
+        profile = self._load_profile(profile_key)
+        attachment_data = self._load_attachment(attachment_key)
+        message_parts = self._format_message_parts(profile, event)
+        email = _create_mime_message(profile['from'], profile['to'], message_parts['subject'], message_parts['body'], {
+            'name': message_parts['attachment_name'],
+            'data': attachment_data,
+        })
+        self._ses.send_raw_email(
+            RawMessage={'Data': email},
+        )
 
 
 def _create_mime_message(from_, to, subject, message_formats, attachment):
