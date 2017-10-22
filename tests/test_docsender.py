@@ -200,6 +200,27 @@ def test_format_message_parts_body_text_references_attachment_and_subject(docsen
     assert message_parts['body']['text'] == 'body_text subject bob attachment bob'
 
 
+def test_format_message_parts_body_text_defaults_from_body_html(docsender):
+    profile = {
+        'body_html_template': '<p>{{ event.name }} and <b>bold</b></pre>',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['body']['text'] == 'bob and **bold**\n\n'
+
+
+def test_format_message_parts_explicit_body_text_preferred_to_html_defaulting(docsender):
+    profile = {
+        'body_html_template': '<p>{{ event.name }} and <b>bold</b></pre>',
+        'body_text_template': 'body_text {{ event.name }}',
+    }
+
+    message_parts = docsender._format_message_parts(profile, {'name': 'bob'})
+
+    assert message_parts['body']['text'] == 'body_text bob'
+
+
 def test_format_message_parts_all(docsender):
     profile = {
         'attachment_name_template': 'attach {{ event.name }}',

@@ -1,6 +1,7 @@
 from copy import deepcopy
 from email.message import Message
 from email.policy import SMTPUTF8
+from html2text import html2text
 from jinja2 import select_autoescape, DictLoader, StrictUndefined
 # from jinja2 import , DictLoader
 from jinja2.sandbox import ImmutableSandboxedEnvironment
@@ -63,6 +64,8 @@ class DocSender:
             if template_name in templates:
                 template = envionment.get_template(template_name)
                 body[type_] = template.render(event=event, **message_parts)
+        if 'html' in body and 'text' not in body:
+            body['text'] = html2text(body['html'])
 
         message_parts['body'] = body
         return message_parts
