@@ -3,10 +3,14 @@ from email.message import EmailMessage
 from email.policy import SMTPUTF8
 from html2text import html2text
 from jinja2 import select_autoescape, DictLoader, StrictUndefined
-# from jinja2 import , DictLoader
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
+import logging
+import time
 import yaml
+
+
+logger = logging.getLogger(__name__)
 
 
 class DocSender:
@@ -77,17 +81,33 @@ class DocSender:
         return attachment_body.read(), attachment_response['ContentType'].split('/')
 
     def send_email(self, profile_key, attachment_key, event):
+        time_start = time.time()
         profile = self._load_profile(profile_key)
+        time_load_profile = time.time()
         attachment_data, attachment_type = self._load_attachment(attachment_key)
+        time_load_attachment = time.time()
         message_parts = self._format_message_parts(profile, event)
+        time_format_message = time.time()
         email = _create_mime_message(profile['from'], profile['to'], message_parts['subject'], message_parts['body'], {
             'name': message_parts['attachment_name'],
             'data': attachment_data,
             'type': attachment_type,
         })
+        time_create_mime_message = time.time()
         self._ses.send_raw_email(
             RawMessage={'Data': email},
         )
+        time_send_email = time.time()
+        logger.debug('\n'.join([
+            'send_email timings:',
+            'load_profile: ' + str(time_load_profile - time_start),
+            'load_attachment: ' + str(time_load_attachment - time_load_profile),
+            'format_message: ' + str(time_format_message - time_load_attachment),
+            'create_mime_message: ' + str(time_create_mime_message - time_format_message),
+            'send_raw_email: ' + str(time_send_email - time_create_mime_message),
+            'email size: ' + str(len(email)),
+            'attachment size: ' + str(len(attachment_data)),
+        ]))
 
 
 def _create_mime_message(from_, to, subject, message_formats, attachment):
