@@ -4,6 +4,8 @@ from email.policy import SMTPUTF8
 from html2text import html2text
 from jinja2 import select_autoescape, DictLoader, StrictUndefined
 from jinja2.sandbox import ImmutableSandboxedEnvironment
+from jwcrypto import jwe
+from jwcrypto.common import json_encode
 
 import logging
 import time
@@ -18,15 +20,32 @@ class DocSender:
     MESSAGE_PARTS = ['attachment_name', 'subject']
     BODY_TYPES = ['html', 'text']
 
-    def __init__(self, ses_client, profile_bucket, attachment_bucket):
+    def __init__(self, ses_client, profile_bucket, attachment_bucket, token_key_provider=None):
         self._ses = ses_client
         self._profile_bucket = profile_bucket
         self._attachment_bucket = attachment_bucket
+        self._token_key_provider = token_key_provider
 
     def _load_profile(self, profile_key):
         profile_object = self._profile_bucket.Object(profile_key)
         profile_body = profile_object.get()['Body']
         return yaml.load(profile_body.read())['email']
+
+    def _create_tracking_token(self, **kwargs):
+        if self._token_key_provider is None:
+            return None
+        token_key = self._token_key_provider()
+        token = jwe.JWE(
+            protected={
+                'alg': 'dir',
+                'enc': 'A256GCM',
+                'kid': token_key.key_id,
+                'zip': 'DEF',
+            },
+            plaintext=json_encode(kwargs),
+            recipient=token_key
+        )
+        return token.serialize(compact=True)
 
     def _build_templates_dict(self, profile):
         templates = {}
@@ -86,13 +105,26 @@ class DocSender:
         time_load_profile = time.time()
         attachment_data, attachment_type = self._load_attachment(attachment_key)
         time_load_attachment = time.time()
+        tracking_token = self._create_tracking_token(
+            profile_key=profile_key,
+            profile=profile,
+            event=event
+        )
+        time_create_tracking_token = time.time()
         message_parts = self._format_message_parts(profile, event)
         time_format_message = time.time()
-        email = _create_mime_message(profile['from'], profile['to'], message_parts['subject'], message_parts['body'], {
-            'name': message_parts['attachment_name'],
-            'data': attachment_data,
-            'type': attachment_type,
-        })
+        email = _create_mime_message(
+            from_=profile['from'],
+            to=profile['to'],
+            subject=message_parts['subject'],
+            message_formats=message_parts['body'],
+            tracking_token=tracking_token,
+            attachment={
+                'name': message_parts['attachment_name'],
+                'data': attachment_data,
+                'type': attachment_type,
+            },
+        )
         time_create_mime_message = time.time()
         self._ses.send_raw_email(
             RawMessage={'Data': email},
@@ -102,7 +134,8 @@ class DocSender:
             'send_email timings:',
             'load_profile: ' + str(time_load_profile - time_start),
             'load_attachment: ' + str(time_load_attachment - time_load_profile),
-            'format_message: ' + str(time_format_message - time_load_attachment),
+            'create_tracking_token: ' + str(time_create_tracking_token - time_load_attachment),
+            'format_message: ' + str(time_format_message - time_create_tracking_token),
             'create_mime_message: ' + str(time_create_mime_message - time_format_message),
             'send_raw_email: ' + str(time_send_email - time_create_mime_message),
             'email size: ' + str(len(email)),
@@ -110,7 +143,7 @@ class DocSender:
         ]))
 
 
-def _create_mime_message(from_, to, subject, message_formats, attachment):
+def _create_mime_message(from_, to, subject, message_formats, attachment=None, tracking_token=None):
     if message_formats is None:
         raise ValueError('Message_formats must be a dict but was ' + str(message_formats))
     email = _create_mime_body(message_formats)
@@ -118,6 +151,8 @@ def _create_mime_message(from_, to, subject, message_formats, attachment):
     email['From'] = from_
     email['To'] = to
     email['Subject'] = subject
+    if tracking_token is not None:
+        email['x-ocoen-tracking-token'] = tracking_token
 
     if attachment is not None:
         email.add_attachment(attachment['data'], filename=attachment['name'],

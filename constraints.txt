@@ -1,10 +1,16 @@
+asn1crypto==0.23.0
 boto3==1.4.7
-botocore==1.7.33
+botocore==1.7.36
+cffi==1.11.2
+cryptography==2.1.2
 docutils==0.14
 html2text==2017.10.4
+idna==2.6
 Jinja2==2.9.6
 jmespath==0.9.3
+jwcrypto==0.4.2
 MarkupSafe==1.0
+pycparser==2.18
 python-dateutil==2.6.1
 PyYAML==3.12
 s3transfer==0.1.11

@@ -111,6 +111,21 @@ def test_create_mime_message_with_attachment(mocker):
     assert 'text message' == text_part.get_payload().rstrip()
 
 
+def test_create_mime_message_with_tracking_token():
+    token = 'token'
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, None, token)
+    email = message_from_bytes(result, _class=EmailMessage)
+
+    assert email['x-ocoen-tracking-token'] == token
+
+
+def test_create_mime_message_with_no_tracking_token():
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, None, None)
+    email = message_from_bytes(result, _class=EmailMessage)
+
+    assert 'x-ocoen-tracking-token' not in email
+
+
 def _remove_message_bodies(msg):
     msg.pop('text', None)
     msg.pop('html', None)

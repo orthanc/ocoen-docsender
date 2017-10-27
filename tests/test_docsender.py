@@ -1,4 +1,6 @@
 from botocore.response import StreamingBody
+from jwcrypto import jwe, jwk
+from jwcrypto.common import json_decode
 from ocoen.docsender import DocSender
 from unittest.mock import create_autospec
 from yaml.error import YAMLError
@@ -8,6 +10,9 @@ import jinja2
 import ocoen.docsender
 import pytest
 import yaml
+
+
+token_key = jwk.JWK.generate(kty='oct', size=256, kid='the key id')
 
 
 @pytest.fixture
@@ -69,12 +74,15 @@ def s3_buckets(session):
 
 
 @pytest.fixture
-def docsender(session, s3_buckets):
+def docsender(session, s3_buckets, mocker):
     ses = create_autospec(session.client('ses').__class__, instance=True)
     profile_bucket = s3_buckets.Bucket('profile')
     attachment_bucket = s3_buckets.Bucket('attachment')
 
-    return DocSender(ses, profile_bucket, attachment_bucket)
+    token_key_provider = mocker.MagicMock()
+    token_key_provider.return_value = token_key
+
+    return DocSender(ses, profile_bucket, attachment_bucket, token_key_provider)
 
 
 def test_load_profile(docsender, s3_buckets):
@@ -280,6 +288,49 @@ def test_load_attachment(docsender, s3_buckets):
     assert ['text', 'plain'] == content_type
 
 
+def test_create_tracking_token(docsender):
+    event = {'event_data': 'id'}
+    profile_key = 'profile_key'
+    profile = {
+        'from': 'from example',
+        'to': 'to example',
+    }
+
+    token = docsender._create_tracking_token(
+        profile_key=profile_key,
+        profile=profile,
+        event=event,
+    )
+
+    decrypted_token = jwe.JWE()
+    decrypted_token.deserialize(token, token_key)
+    parsed_token = json_decode(decrypted_token.payload)
+    token_header = decrypted_token.jose_header
+
+    assert token_header['kid'] == token_key.key_id
+    assert parsed_token['profile_key'] == profile_key
+    assert parsed_token['profile'] == profile
+    assert parsed_token['event'] == event
+
+
+def test_create_tracking_token_no_key_function(docsender, mocker):
+    mocker.patch.object(docsender, '_token_key_provider', None)
+    event = {'event_data': 'id'}
+    profile_key = 'profile_key'
+    profile = {
+        'from': 'from example',
+        'to': 'to example',
+    }
+
+    token = docsender._create_tracking_token(
+        profile_key=profile_key,
+        profile=profile,
+        event=event,
+    )
+
+    assert token is None
+
+
 def test_send_email(docsender, mocker):
     event = {'event_data': 'id'}
     profile_key = 'profile_key'
@@ -297,16 +348,24 @@ def test_send_email(docsender, mocker):
     }
     attachment_key = 'attachment_key'
     attachment_data = 'test data'
+    tracking_token = 'tracking token'
     mime_message = 'test message'
     mocker.patch('ocoen.docsender.DocSender._load_profile', autospec=True, return_value=profile)
     mocker.patch('ocoen.docsender.DocSender._load_attachment', autospec=True,
                  return_value=(attachment_data, ['text', 'plain']))
+    mocker.patch('ocoen.docsender.DocSender._create_tracking_token', autospec=True, return_value=tracking_token)
     mocker.patch('ocoen.docsender._create_mime_message', autospec=True, return_value=mime_message)
 
     docsender.send_email(profile_key, attachment_key, event)
 
     docsender._load_profile.assert_called_once_with(docsender, profile_key)
     docsender._load_attachment.assert_called_once_with(docsender, attachment_key)
+    docsender._create_tracking_token.assert_called_once_with(
+        docsender,
+        profile_key=profile_key,
+        profile=profile,
+        event=event,
+    )
     ocoen.docsender._create_mime_message.assert_called_once_with(
         from_=from_,
         to=to,
@@ -318,6 +377,7 @@ def test_send_email(docsender, mocker):
             'name': attachment_name,
             'data': attachment_data,
             'type': ['text', 'plain'],
-        }
+        },
+        tracking_token=tracking_token,
     )
     docsender._ses.send_raw_email.assert_called_once_with(RawMessage={'Data': mime_message})
