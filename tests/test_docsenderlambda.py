@@ -115,3 +115,76 @@ def test_token_key_provider_generate_key_saves_encrypted_key_to_s3(token_key_pro
         ServerSideEncryption='AES256',
         StorageClass=s3_storage_class,
     )
+
+
+def test_load_docsender(mocker):
+    mocker.patch.dict(os.environ, {
+        'SES_REGION': 'us-east-1',
+        'PROFILES_BUCKET': 'us-east-2:profile_bucket:STANDARD:profiles/',
+        'RESULTS_BUCKET': 'us-west-1:result_bucket:STANDARD:results/',
+        'KEYS_BUCKET': 'us-west-2:key_bucket:TEST_CLASS:keys/',
+        'TOKEN_KMS_KEY': 'ap-southeast-1:my_key',
+    })
+    used_regions = {}
+
+    def region_tracking_mock(region_name):
+        mock = mocker.MagicMock()
+        used_regions[region_name] = mock
+        return mock
+
+    mock_session = mocker.MagicMock()
+    mock_session.side_effect = region_tracking_mock
+    mocker.patch('boto3.session.Session', mock_session)
+
+    docsender = ocoen.docsenderlambda.load_docsender()
+    token_key_manager = docsender._token_key_provider.__self__
+
+    used_regions['us-east-1'].client.assert_called_once_with('ses')
+    assert docsender._ses == used_regions['us-east-1'].client.return_value
+
+    used_regions['us-east-2'].resource.assert_called_once_with('s3')
+    used_regions['us-east-2'].resource.return_value.Bucket.assert_called_once_with('profile_bucket')
+    assert docsender._profile_bucket == used_regions['us-east-2'].resource.return_value.Bucket.return_value
+
+    used_regions['us-west-1'].resource.assert_called_once_with('s3')
+    used_regions['us-west-1'].resource.return_value.Bucket.assert_called_once_with('result_bucket')
+    assert docsender._attachment_bucket == used_regions['us-west-1'].resource.return_value.Bucket.return_value
+
+    used_regions['us-west-2'].resource.assert_called_once_with('s3')
+    used_regions['us-west-2'].resource.return_value.Bucket.assert_called_once_with('key_bucket')
+    assert token_key_manager._keys_bucket == used_regions['us-west-2'].resource.return_value.Bucket.return_value
+    assert token_key_manager._keys_bucket_prefix == 'keys/'
+    assert token_key_manager._keys_bucket_storage_class == 'TEST_CLASS'
+
+    used_regions['ap-southeast-1'].client.assert_called_once_with('kms')
+    assert token_key_manager._kms_client == used_regions['ap-southeast-1'].client.return_value
+    assert token_key_manager._kms_key_id == 'my_key'
+
+
+def test_load_docsender_buckets_without_prefixes(mocker):
+    mocker.patch.dict(os.environ, {
+        'SES_REGION': 'us-east-1',
+        'PROFILES_BUCKET': 'us-east-2:profile_bucket:STANDARD',
+        'RESULTS_BUCKET': 'us-west-1:result_bucket:STANDARD',
+        'KEYS_BUCKET': 'us-west-2:key_bucket:TEST_CLASS',
+        'TOKEN_KMS_KEY': 'ap-southeast-1:my_key',
+    })
+    used_regions = {}
+
+    def region_tracking_mock(region_name):
+        mock = mocker.MagicMock()
+        used_regions[region_name] = mock
+        return mock
+
+    mock_session = mocker.MagicMock()
+    mock_session.side_effect = region_tracking_mock
+    mocker.patch('boto3.session.Session', mock_session)
+
+    docsender = ocoen.docsenderlambda.load_docsender()
+    token_key_manager = docsender._token_key_provider.__self__
+
+    assert docsender._profile_bucket == used_regions['us-east-2'].resource.return_value.Bucket.return_value
+    assert docsender._attachment_bucket == used_regions['us-west-1'].resource.return_value.Bucket.return_value
+    assert token_key_manager._keys_bucket == used_regions['us-west-2'].resource.return_value.Bucket.return_value
+    assert token_key_manager._keys_bucket_prefix == ''
+    assert token_key_manager._keys_bucket_storage_class == 'TEST_CLASS'

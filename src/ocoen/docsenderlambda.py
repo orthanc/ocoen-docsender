@@ -62,17 +62,29 @@ def load_docsender():
     ses_region = os.environ['SES_REGION']
     ses = boto3.session.Session(region_name=ses_region).client('ses')
 
-    profiles_bucket_info = os.environ['PROFILES_BUCKET'].split(':', 2)
+    token_kms_key_info = os.environ['TOKEN_KMS_KEY'].split(':', 2)
+    kms_client = boto3.session.Session(region_name=token_kms_key_info[0]).client('kms')
+
+    profiles_bucket_info = os.environ['PROFILES_BUCKET'].split(':', 3)
     profiles_bucket = boto3.session.Session(
                           region_name=profiles_bucket_info[0],
                       ).resource('s3').Bucket(profiles_bucket_info[1])
 
-    results_bucket_info = os.environ['RESULTS_BUCKET'].split(':', 2)
+    results_bucket_info = os.environ['RESULTS_BUCKET'].split(':', 3)
     results_bucket = boto3.session.Session(
                          region_name=results_bucket_info[0]
                      ).resource('s3').Bucket(results_bucket_info[1])
 
-    return DocSender(ses, profiles_bucket, results_bucket)
+    keys_bucket_info = os.environ['KEYS_BUCKET'].split(':', 3)
+    keys_bucket = boto3.session.Session(
+                         region_name=keys_bucket_info[0]
+                     ).resource('s3').Bucket(keys_bucket_info[1])
+    keys_bucket_storage_class = keys_bucket_info[2]
+    keys_bucket_prefix, = keys_bucket_info[3:4] or ['']
+
+    token_key_manager = TokenKeyProvider(kms_client, token_kms_key_info[1],
+                                         keys_bucket, keys_bucket_prefix, keys_bucket_storage_class)
+    return DocSender(ses, profiles_bucket, results_bucket, token_key_manager.get_key)
 
 
 def handle_event(event, context):
