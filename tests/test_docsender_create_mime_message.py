@@ -42,17 +42,15 @@ def test_create_mime_message_errors_with_none_message():
 
 
 def test_create_mime_message_errors_without_message_body(mocker):
-    mocker.patch.dict(example_message)
-    _remove_message_bodies(example_message)
     with pytest.raises(ValueError):
-        _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, None)
+        _create_mime_message('test@example.com', 'to@example.com', 'subject', {}, None)
 
 
 def test_create_mime_message_sets_text_body(mocker):
-    mocker.patch.dict(example_message)
-    _remove_message_bodies(example_message)
-    example_message['text'] = 'text message'
-    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, None)
+    message_parts = {
+        'text': 'text message'
+    }
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', message_parts, None)
     email = message_from_bytes(result)
     text_part = email.get_payload()[0]
     assert 'text/plain' == text_part.get_content_type()
@@ -60,10 +58,10 @@ def test_create_mime_message_sets_text_body(mocker):
 
 
 def test_create_mime_message_sets_html_body(mocker):
-    mocker.patch.dict(example_message)
-    _remove_message_bodies(example_message)
-    example_message['html'] = 'html message'
-    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, None)
+    message_parts = {
+        'html': 'html message'
+    }
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', message_parts, None)
     email = message_from_bytes(result)
     html_part = email.get_payload()[0]
     assert 'text/html' == html_part.get_content_type()
@@ -71,11 +69,11 @@ def test_create_mime_message_sets_html_body(mocker):
 
 
 def test_create_mime_message_sets_alternatives_body(mocker):
-    mocker.patch.dict(example_message)
-    _remove_message_bodies(example_message)
-    example_message['text'] = 'text message'
-    example_message['html'] = 'html message'
-    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, None)
+    message_parts = {
+        'text': 'text message',
+        'html': 'html message',
+    }
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', message_parts, None)
     email = message_from_bytes(result)
     alternative_part = email.get_payload()[0]
     assert 'multipart/alternative' == alternative_part.get_content_type()
@@ -90,10 +88,10 @@ def test_create_mime_message_sets_alternatives_body(mocker):
 
 
 def test_create_mime_message_with_attachment(mocker):
-    mocker.patch.dict(example_message)
-    _remove_message_bodies(example_message)
-    example_message['text'] = 'text message'
-    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', example_message, {
+    message_parts = {
+        'text': 'text message'
+    }
+    result = _create_mime_message('test@example.com', 'to@example.com', 'subject', message_parts, {
         'name': 'test-attachment',
         'data': 'some data'.encode('utf-8'),
         'type': ['text', 'html'],
@@ -124,8 +122,3 @@ def test_create_mime_message_with_no_tracking_token():
     email = message_from_bytes(result, _class=EmailMessage)
 
     assert 'x-ocoen-tracking-token' not in email
-
-
-def _remove_message_bodies(msg):
-    msg.pop('text', None)
-    msg.pop('html', None)
