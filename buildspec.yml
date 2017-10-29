@@ -1,0 +1,14 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - pip install tox==2.9.1 setuptools==36.6.0
+  build:
+    commands:
+      - tox
+  post_build:
+    commands:
+      - python scripts/package.py .tox/dist
+artifacts:
+  base-directory: lambda
+  files: "**/*"
