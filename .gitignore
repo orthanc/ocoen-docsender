@@ -1,6 +1,6 @@
 /.cache/
 /.tox/
-/dist/
+/lambda/
 
 __pycache__
 *.pyc
