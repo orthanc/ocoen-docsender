@@ -62,7 +62,7 @@ def load_docsender():
     ses_region = os.environ['SES_REGION']
     ses = boto3.session.Session(region_name=ses_region).client('ses')
 
-    token_kms_key_info = os.environ['TOKEN_KMS_KEY'].split(':', 2)
+    token_kms_key_info = os.environ['TOKEN_KMS_KEY'].split(':', 1)
     kms_client = boto3.session.Session(region_name=token_kms_key_info[0]).client('kms')
 
     profiles_bucket_info = os.environ['PROFILES_BUCKET'].split(':', 3)
